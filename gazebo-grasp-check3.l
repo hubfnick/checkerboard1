@@ -9,7 +9,7 @@
 (ros::roseus-add-msgs "geometry_msgs")
 (ros::roseus-add-msgs "image_view2")
 (ros::roseus-add-msgs "posedetection_msgs")
-(load "package://dxl_armed_turtlebot/euslisp/dxl-armed-turtlebot-interface.l")
+;;(load "package://dxl_armed_turtlebot/euslisp/dxl-armed-turtlebot-interface.l")
 (dxl-armed-turtlebot-init)
 (load "models/chessboard-30-7x5-object.l")
 (if (not (boundp '*irtviewer*)) (make-irtviewer))
@@ -17,8 +17,8 @@
 (objects (list *target-object* *dxl-armed-turtlebot*))
 
 (setq *tfb* (instance ros::transform-broadcaster :init))
-
-;;(ros::rate 100)
+(setq countsave 0)
+(ros::rate 100)
 
 
 
@@ -33,6 +33,7 @@
                        (cam-coords (send (send *dxl-armed-turtlebot* :camera_rgb_optical_frame_lk) :copy-worldcoords)))
 		  (setq obj-pos (scale 0.001 (send (send cam-coords :transform cam->obj-coords) :worldpos)))
 		  (setq found-obj t)
+		  (setq countsave 0)
                   ;; (3) Euslisp内部でのworld座標系の値にして、そこにcheckerboardモデルを配置する
                   (send *target-object* :newcoords (send cam-coords :transform cam->obj-coords))
 		  
@@ -72,34 +73,38 @@
  (setq target-cds (make-coords :pos (scale 1000 obj-pos)))
 (send target-cds :translate #f(-200 0 50));;z should be 0, but the link is not rigid in gazebo, so 100 is the height offset for end effector.
 
-(send target-cds :translate #f(-1800 0 900))
+(send target-cds :translate #f(700 0 -300))
  (setq curtime (ros::time-now))
- (if (ros::time>= (ros::time- curtime termstart) (ros::time 3.0))
+ (if (ros::time>= (ros::time- curtime termstart) (ros::time 0.8))
      (progn
        (format t "elapsed ~A sec ~%" (send (ros::time- (ros::time-now) termstart) :to-sec))
        (setq termstart curtime)
        (setq timestate (mod (+ timestate 1) 4))
        (setq timechange t)
+       
        )
    )
  (if timechange
      (progn
+       (send *ri* :publish-sound :error)
        (cond ((= timestate 0) (progn
 				(print "0")
+				
 				(if found-obj
 				    (progn
 				      (send *dxl-armed-turtlebot* :inverse-kinematics target-cds :rotation-axis :y :revert-if-fail nil)
+				      (send *ri* :angle-vector  (send *dxl-armed-turtlebot* :angle-vector) 300)
 				      (send *ri* :wait-interpolation)
-				      (print "inverse kinematis")
+				      (print "inverse")
 				      )
 				  (print "no obj found")
 				  )
 				;;(send *ri* :angle-vector #f(0 0 -50 0 50 0) 1500)
-				(send *ri* :wait-interpolation)
+				;;(send *ri* :wait-interpolation)
 				))
 	     ((= timestate 1) (progn
 				(print "1")
-				(send *ri* :angle-vector #f(0 0 0 0 0 0) 1500)
+				(send *ri* :angle-vector #f(0 0 -50 0 50 0) 300)
 				(send *ri* :wait-interpolation)
 				))
 	     ((= timestate 2) (progn
@@ -111,7 +116,10 @@
        (setq timechange nil)
        )
    )
- (setq found-obj nil)
+(setq countsave (+ 1 countsave))
+(if (> countsave 5)
+    (setq found-obj nil)
+  )
  (ros::spin-once)
  (ros::sleep)
  )
